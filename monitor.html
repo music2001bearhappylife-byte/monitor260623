@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="screen-orientation" content="landscape">
+<meta name="x5-orientation" content="landscape">
+<title>室内環境モニター</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tabler-icons/2.44.0/iconfont/tabler-icons.min.css">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    width: 100%; height: 100%;
+    font-family: 'Hiragino Sans', 'Meiryo', sans-serif;
+    background: #1a1a1a;
+    overflow: hidden;
+  }
+  .wrap {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    width: 100vw; height: 100vh;
+  }
+  .left {
+    display: flex; flex-direction: column;
+    border-right: 1px solid #333;
+  }
+  .panel {
+    flex: 1;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    position: relative;
+  }
+  .panel + .panel { border-top: 1px solid #333; }
+  .panel-label {
+    font-size: clamp(16px, 2.2vw, 28px);
+    color: #888;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.5rem;
+  }
+  .panel-value {
+    font-size: clamp(70px, 13vw, 160px);
+    font-weight: 700;
+    line-height: 1;
+    transition: color 0.5s ease;
+  }
+  .panel-unit {
+    font-size: clamp(24px, 4vw, 48px);
+    font-weight: 500;
+    margin-left: 0.2em;
+  }
+  .panel-badge {
+    margin-top: 0.8rem;
+    font-size: clamp(14px, 1.8vw, 22px);
+    padding: 0.3em 1em;
+    border-radius: 999px;
+    font-weight: 500;
+  }
+  .right {
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    padding: 2vw;
+  }
+  .right-title {
+    font-size: clamp(18px, 2.4vw, 30px);
+    color: #ddd;
+    margin-bottom: 1rem;
+    letter-spacing: 0.04em;
+  }
+  .right-sub {
+    font-size: clamp(12px, 1.4vw, 18px);
+    color: #777;
+    margin-bottom: 1.5rem;
+  }
+  .chart-area {
+    position: relative;
+    width: min(60vh, 42vw);
+    height: min(60vh, 42vw);
+  }
+  .chart-center {
+    position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    pointer-events: none;
+  }
+  .chart-center .n {
+    font-size: clamp(32px, 5vw, 56px);
+    font-weight: 700;
+    color: #f0f0f0;
+    line-height: 1;
+  }
+  .chart-center .label {
+    font-size: clamp(12px, 1.4vw, 16px);
+    color: #888;
+    margin-top: 4px;
+  }
+  .legend {
+    display: flex; flex-wrap: wrap;
+    gap: 0.8em 1.6em;
+    justify-content: center;
+    margin-top: 1.8rem;
+    max-width: 90%;
+  }
+  .legend-item {
+    display: flex; align-items: center; gap: 0.5em;
+    font-size: clamp(13px, 1.5vw, 19px);
+    color: #ccc;
+  }
+  .legend-dot {
+    width: 0.9em; height: 0.9em;
+    border-radius: 3px;
+    flex-shrink: 0;
+  }
+  .updated {
+    position: fixed; bottom: 16px; left: 16px;
+    font-size: clamp(11px, 1.1vw, 14px);
+    color: #555;
+  }
+  .COLD   { color: #4da3ff; }
+  .OK     { color: #3ddc84; }
+  .HOT    { color: #ff5c5c; }
+  .badge-COLD { background: rgba(77,163,255,0.15); color: #7ab8ff; }
+  .badge-OK   { background: rgba(61,220,132,0.15); color: #5be89e; }
+  .badge-HOT  { background: rgba(255,92,92,0.15);  color: #ff8787; }
+  .rotate-hint {
+    display: none;
+    position: fixed; inset: 0;
+    background: #1a1a1a;
+    z-index: 999;
+    flex-direction: column;
+    align-items: center; justify-content: center;
+    color: #ccc; text-align: center; padding: 2rem;
+  }
+  .rotate-hint i { font-size: 64px; margin-bottom: 1rem; color: #888; }
+  .rotate-hint p { font-size: 18px; }
+  @media (orientation: portrait) {
+    .wrap { display: none; }
+    .updated { display: none; }
+    .rotate-hint { display: flex; }
+  }
+</style>
+</head>
+<body>
+
+<div class="rotate-hint">
+  <i class="ti ti-rotate" aria-hidden="true"></i>
+  <p>タブレットを横向きにしてください</p>
+</div>
+
+<div class="wrap">
+  <div class="left">
+    <div class="panel">
+      <div class="panel-label">現在の温度</div>
+      <div class="panel-value" id="temp-val">--<span class="panel-unit">°C</span></div>
+      <div class="panel-badge" id="temp-badge">取得中</div>
+    </div>
+    <div class="panel">
+      <div class="panel-label">現在の湿度</div>
+      <div class="panel-value" id="hum-val">--<span class="panel-unit">%</span></div>
+      <div class="panel-badge" id="hum-badge">取得中</div>
+    </div>
+  </div>
+
+  <div class="right">
+    <div class="right-title">みんなの感じ方</div>
+    <div class="right-sub" id="total-label">本日の回答 取得中</div>
+    <div class="chart-area">
+      <canvas id="pieChart" role="img" aria-label="本日の温冷感アンケートの回答割合の円グラフ">本日の回答割合データ</canvas>
+      <div class="chart-center">
+        <div class="n" id="chart-total">--</div>
+        <div class="label">件</div>
+      </div>
+    </div>
+    <div class="legend" id="legend"></div>
+  </div>
+</div>
+
+<div class="updated" id="updated-at">読み込み中…</div>
+
+<script>
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbxtWda-N2BPKWYq5vX_lPVdczNkH2XSSKn84AKeGH7AGnuiHaDXBNHNFtyC9XuNPwo/exec';
+
+const OPTS = [
+  { v:5, label:'とても暑い', formLabel:'とても暑い（汗ばむほど暑い）', color:'#ff5c5c' },
+  { v:4, label:'やや暑い',   formLabel:'やや暑い（少し暑さを感じる）', color:'#ff9d4d' },
+  { v:3, label:'ちょうどよい', formLabel:'ちょうどよい（快適）',        color:'#3ddc84' },
+  { v:2, label:'やや寒い',   formLabel:'やや寒い（少し肌寒い）',        color:'#4da3ff' },
+  { v:1, label:'とても寒い', formLabel:'とても寒い（震えてしまうほど寒い）', color:'#7a6bff' },
+];
+
+function judge(value, low, high) {
+  if (value < low) return 'COLD';
+  if (value > high) return 'HOT';
+  return 'OK';
+}
+
+let pieChart = null;
+
+function renderPie(counts, total) {
+  document.getElementById('total-label').textContent = '本日の回答 ' + total + '件';
+  document.getElementById('chart-total').textContent = total;
+
+  const data = OPTS.map(o => counts[o.formLabel] || 0);
+  const colors = OPTS.map(o => o.color);
+
+  if (pieChart) {
+    pieChart.data.datasets[0].data = data;
+    pieChart.update();
+  } else {
+    pieChart = new Chart(document.getElementById('pieChart'), {
+      type: 'doughnut',
+      data: {
+        labels: OPTS.map(o => o.label),
+        datasets: [{ data, backgroundColor: colors, borderWidth: 0 }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: '68%',
+        plugins: { legend: { display: false } }
+      }
+    });
+  }
+
+  const legend = document.getElementById('legend');
+  legend.innerHTML = OPTS.map((o, i) => {
+    const pct = total > 0 ? Math.round(data[i] / total * 100) : 0;
+    return `<span class="legend-item">
+      <span class="legend-dot" style="background:${o.color}"></span>
+      ${o.label} ${pct}%
+    </span>`;
+  }).join('');
+}
+
+function fetchGASData() {
+  const callbackName = 'gasCallback_' + Date.now();
+  const script = document.createElement('script');
+  script.src = GAS_URL + '?callback=' + callbackName;
+  window[callbackName] = function(data) {
+    if (data && data.counts) {
+      renderPie(data.counts, data.total);
+    }
+    delete window[callbackName];
+    script.remove();
+  };
+  script.onerror = function() {
+    delete window[callbackName];
+    script.remove();
+  };
+  document.head.appendChild(script);
+}
+
+function fetchSensorData() {
+  fetch('./data.json')
+    .then(r => r.json())
+    .then(d => {
+      const tempState = judge(d.temperature, 24, 27);
+      const humState  = judge(d.humidity, 45, 60);
+
+      const tempLabels = { COLD: '低め', OK: '快適', HOT: '高め' };
+      const humLabels  = { COLD: '乾燥', OK: '快適', HOT: '高湿' };
+
+      const tempEl = document.getElementById('temp-val');
+      tempEl.innerHTML = d.temperature + '<span class="panel-unit">°C</span>';
+      tempEl.className = 'panel-value ' + tempState;
+
+      const humEl = document.getElementById('hum-val');
+      humEl.innerHTML = d.humidity + '<span class="panel-unit">%</span>';
+      humEl.className = 'panel-value ' + humState;
+
+      const tempBadge = document.getElementById('temp-badge');
+      tempBadge.textContent = tempLabels[tempState];
+      tempBadge.className = 'panel-badge badge-' + tempState;
+
+      const humBadge = document.getElementById('hum-badge');
+      humBadge.textContent = humLabels[humState];
+      humBadge.className = 'panel-badge badge-' + humState;
+
+      const dt = new Date(d.updated_at);
+      document.getElementById('updated-at').textContent =
+        dt.getHours() + ':' + String(dt.getMinutes()).padStart(2, '0') + ' 時点のデータ';
+    })
+    .catch(() => {
+      document.getElementById('updated-at').textContent = 'センサーデータ読み込みエラー';
+    });
+}
+
+fetchGASData();
+fetchSensorData();
+setInterval(fetchGASData, 2 * 60 * 1000);
+setInterval(fetchSensorData, 60 * 1000);
+</script>
+</body>
+</html>
